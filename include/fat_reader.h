@@ -1,0 +1,5 @@
+#ifndef __FAT_READER__
+#define __FAT_READER__
+#define DEFAULT_OFFSET_TO_BOOT_RECORD 0//32256
+#define DEFAULT_FILE_SIZE 1000000000
+#endif //__FAT_READER__
