@@ -25,7 +25,7 @@ typedef struct{
 FSState * createFSState(char *fs_mmap, ssize_t mmap_size, char *path, BootRecord *bR);
 void destroyFSState(FSState* fsState);
 
-
+DirectoryEntry *changeDirectory(FSState* fsState, char *path);
 DirectoryEntry *getPtrToDirectory(FSState* fsState, char *path, DirectoryEntry*directory);
 DirectoryEntry *getPtrToRootDirectory(FSState* fsState);
 DirectoryEntry *getInnerDirectories(FSState* fsState, DirectoryEntry *directories);

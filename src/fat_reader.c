@@ -63,7 +63,6 @@ int main(int argc, char **argv) {
             break;
         }
         performCommand(fsState, next_command);
-        LOGMESG(LOG_WARN, "Can not create mmap");
     }
     destroyFSState(fsState);
     munmap(mmap_start, sb.st_size);
@@ -79,7 +78,7 @@ int main(int argc, char **argv) {
 }
 
 int performCommand(FSState *fsState, char *next_command) {
-    if (startsWith("ls ", next_command)) {
+    if (startsWith("ls", next_command)) {
         next_command += 2;
         while (next_command[0] == ' ') next_command++;
         next_command[ strlen(next_command) == 0? 0 : strlen(next_command) -1  ] = 0;
@@ -106,6 +105,18 @@ int performCommand(FSState *fsState, char *next_command) {
                 //}
             }
         } else {
+            LOGMESG(LOG_ERROR, "Can not find this directory");
+        }
+
+    }
+    if (startsWith("cd ", next_command)) {
+        char* data;
+        next_command += 2;
+        while (next_command[0] == ' ') next_command++;
+        next_command[ strlen(next_command) == 0? 0 : strlen(next_command) -1  ] = 0;
+        DirectoryEntry *dir = changeDirectory(fsState, next_command);
+        if (dir!=NULL) {
+        }else{
             LOGMESG(LOG_ERROR, "Can not find this directory");
         }
 

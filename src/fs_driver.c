@@ -7,6 +7,7 @@
 #include <string.h>
 #include <fat32_structures.h>
 #include <malloc.h>
+#include <fs_driver.h>
 #include "fs_driver.h"
 
 FSState * createFSState(char *fs_mmap, ssize_t mmap_size, char *path, BootRecord *bR){
@@ -15,15 +16,23 @@ FSState * createFSState(char *fs_mmap, ssize_t mmap_size, char *path, BootRecord
     fsState->currPath = "/";//currently not implemented
     fsState->mmap_size = mmap_size;
     fsState->fs_mmap = fs_mmap;
-    fsState->currDir = getPtrToRootDirectory( fsState );
     fsState->FAT = (uint32_t*) ( (char*) bR + bR->reserved_sectors* bR->bytes_per_sector);
     fsState->cluster_size = bR->bytes_per_sector * bR->sectors_per_cluster;
     fsState->virtualRootDir.starting_cluster_hw = bR->cluster_number_of_the_root_directory>>16;
     fsState->virtualRootDir.starting_cluster_lw = bR->cluster_number_of_the_root_directory & 0xFFFF;
+    fsState->currDir = &fsState->virtualRootDir;
     return fsState;
 }
 void destroyFSState(FSState* fsState){
     free(fsState);
+}
+
+DirectoryEntry *changeDirectory(FSState* fsState, char *path) {
+    DirectoryEntry *dir = getPtrToDirectory(fsState, path, NULL);
+    if (dir != NULL){
+        fsState->currDir = dir;
+    }
+    return dir;
 }
 
 DirectoryEntry *getPtrToDirectory(FSState* fsState, char *path, DirectoryEntry*directory) {
@@ -38,6 +47,9 @@ DirectoryEntry *getPtrToDirectory(FSState* fsState, char *path, DirectoryEntry*d
     }
     if (directory == NULL){
         directory = fsState->currDir;
+        if( strlen(path)==0){
+            return directory;
+        }
     }
 
     char first_level_file[FILE_PATH_MAX_LEN];
@@ -52,7 +64,7 @@ DirectoryEntry *getPtrToDirectory(FSState* fsState, char *path, DirectoryEntry*d
         path++;
     }
     DirectoryEntry* next_dir = getFileWithNameInDirectory(fsState, directory, first_level_file);
-
+    if (  next_dir!= NULL && next_dir->starting_cluster_lw == 0 &&  next_dir->starting_cluster_hw == 0) next_dir = &fsState->virtualRootDir;
     if ( next_dir!= NULL){ // directory ( file) was not found
         if ( strlen(path) == 0){ // if it is last part of the path.
             return next_dir;
@@ -83,13 +95,22 @@ char *getPtrToFile( FSState* fsState, uint32_t cluster_number) {
 
 void listDirectory( FSState* fsState, DirectoryEntry* dir) {
     DirectoryEntry* directories = getInnerDirectories(fsState, dir);
+    printf("%-15s%-10s%-23s%-5s\n","file name","size", "date", "type");
     while (  *((char*)directories) != 0) {
         if (directories->glags == 0x0F) {
             directories++;
             continue;
         }
         char* fname = getFileName(directories);
-        printf("fname = %s\n" ,fname );
+        int day_of_month = (directories->date & 0x1f);
+        int month = ((directories->date >> 5) & 0x0f);
+        int year = (directories->date >> 9) & 0x7f;
+        int seconds = (directories->time & 0x1f) * 2;
+        int minutes = (directories->time >> 5) & 0x3f;
+        int hours = (directories->time >> 11) & 0x1f;
+        char date[20];
+        sprintf(date, "%d.%02d.%02d %02d:%02d:%02d",year+1980, month, day_of_month, hours,minutes,seconds );
+        printf("%-15s%-10u%-23s%-5o\n" ,fname ,directories->file_size, date, directories->glags);
         free(fname);
         directories++;
     }
