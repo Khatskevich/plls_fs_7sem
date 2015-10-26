@@ -8,7 +8,6 @@
 #include <fat32_structures.h>
 #include <malloc.h>
 #include <fs_driver.h>
-#include "fs_driver.h"
 
 FSState * createFSState(char *fs_mmap, ssize_t mmap_size, char *path, BootRecord *bR){
     FSState* fsState = (FSState*) malloc(sizeof(FSState));
@@ -84,6 +83,13 @@ DirectoryEntry *getPtrToRootDirectory(FSState* fsState) {
      return (DirectoryEntry* )getPtrToFile(fsState, fsState->bR->cluster_number_of_the_root_directory);
 }
 
+ssize_t getNextCluster( FSState* fsState, uint32_t cluster_number){
+    ssize_t next_cluster_number = fsState->FAT[cluster_number];
+    if ( next_cluster_number >= 0xFFFFFFF){
+        return 0;
+    }
+}
+
 char *getPtrToFile( FSState* fsState, uint32_t cluster_number) {
     BootRecord *bR = fsState->bR;
     return ((char*)bR) +
@@ -93,43 +99,66 @@ char *getPtrToFile( FSState* fsState, uint32_t cluster_number) {
            ) * bR->bytes_per_sector;
 }
 
-void listDirectory( FSState* fsState, DirectoryEntry* dir) {
-    DirectoryEntry* directories = getInnerDirectories(fsState, dir);
-    printf("%-15s%-10s%-23s%-5s\n","file name","size", "date", "type");
-    while (  *((char*)directories) != 0) {
-        if (directories->glags == 0x0F) {
-            directories++;
-            continue;
-        }
-        char* fname = getFileName(directories);
-        int day_of_month = (directories->date & 0x1f);
-        int month = ((directories->date >> 5) & 0x0f);
-        int year = (directories->date >> 9) & 0x7f;
-        int seconds = (directories->time & 0x1f) * 2;
-        int minutes = (directories->time >> 5) & 0x3f;
-        int hours = (directories->time >> 11) & 0x1f;
-        char date[20];
-        sprintf(date, "%d.%02d.%02d %02d:%02d:%02d",year+1980, month, day_of_month, hours,minutes,seconds );
-        printf("%-15s%-10u%-23s%-5o\n" ,fname ,directories->file_size, date, directories->glags);
-        free(fname);
-        directories++;
+DirectoryIterator* createDirectoryIterator(FSState* fsState, DirectoryEntry* dir){
+    DirectoryIterator* dirIter = (DirectoryIterator*)malloc(sizeof(DirectoryIterator));
+    dirIter->fsState = fsState;
+    dirIter->clusterNumber =(dir->starting_cluster_hw << 16) + dir->starting_cluster_lw;
+    dirIter->directory = dir;
+    dirIter->currentDirectory = ( DirectoryEntry* )getPtrToFile(fsState, dirIter->clusterNumber );
+    dirIter->firstDirecrotyInCluster = dirIter->currentDirectory;
+    if ( dirIter->currentDirectory != NULL){
+        return dirIter;
+    }
+    return NULL;
+}
+
+void destroyDirectoryIterator(DirectoryIterator* dirIter){
+    if ( dirIter != NULL){
+        free( dirIter);
     }
 }
 
-DirectoryEntry *getFileWithNameInDirectory(FSState* fsState, DirectoryEntry* dir, char *name) {
-    DirectoryEntry* directories = getInnerDirectories(fsState, dir);
-    while (  *((char*)directories) != 0){
-        if (directories->glags==0x0F){
-            directories++;
+DirectoryEntry* getNextDir(DirectoryIterator* dirIter){
+    if ( dirIter==NULL || dirIter->currentDirectory==NULL){
+        return NULL;
+    }
+    while( 1 ){
+        if (  ( (char*) (dirIter->currentDirectory +1) - (char*) (dirIter->firstDirecrotyInCluster ) ) >= dirIter->fsState->cluster_size ){
+            dirIter->clusterNumber = getNextCluster(dirIter->fsState, dirIter->clusterNumber);
+            if ( dirIter->clusterNumber == 0 ){
+                dirIter->currentDirectory = NULL;
+                return NULL;
+            }
+            dirIter->currentDirectory = ( DirectoryEntry* ) getPtrToFile(dirIter->fsState, dirIter->clusterNumber );
+            dirIter->firstDirecrotyInCluster = dirIter->currentDirectory;
+        } else {
+            dirIter->currentDirectory++;
+        }
+        if ( ((char*)dirIter->currentDirectory)[0]==0){ // end of a directory
+            dirIter->currentDirectory = NULL;
+            return NULL;
+        }
+        if ( dirIter->currentDirectory->glags==0x0F){ // copy of file
             continue;
         }
-
-        if (compareFileAndDirecrtoryName(directories, name) == 0){
-            return directories;
+        if ( ((uint8_t*) dirIter->currentDirectory)[0] !=0xE5){
+            return dirIter->currentDirectory;
         }
-        directories++;
     }
     return NULL;
+}
+
+DirectoryEntry *getFileWithNameInDirectory(FSState* fsState, DirectoryEntry* dir, char *name) {
+    DirectoryIterator *dirIter = createDirectoryIterator(fsState, dir);
+
+    DirectoryEntry *nextDir = NULL;
+    while ((nextDir = getNextDir(dirIter)) != NULL){
+        if (compareFileAndDirecrtoryName(nextDir, name) == 0) {
+            break;
+        }
+    }
+    destroyDirectoryIterator(dirIter);
+    return nextDir;
 }
 
 int compareFileAndDirecrtoryName(DirectoryEntry *dir, char *name){

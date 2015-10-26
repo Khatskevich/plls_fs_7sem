@@ -22,6 +22,15 @@ typedef struct{
     ssize_t cluster_size;
 } FSState;
 
+
+typedef struct{
+    FSState* fsState;
+    ssize_t clusterNumber;
+    DirectoryEntry *directory;
+    DirectoryEntry *currentDirectory;
+    DirectoryEntry *firstDirecrotyInCluster;
+} DirectoryIterator;
+
 FSState * createFSState(char *fs_mmap, ssize_t mmap_size, char *path, BootRecord *bR);
 void destroyFSState(FSState* fsState);
 
@@ -34,6 +43,11 @@ char *getPtrToFile( FSState* fsState, uint32_t cluster_number);
 int compareFileAndDirecrtoryName(DirectoryEntry *dir, char *name);
 char* getFileName( DirectoryEntry* dir);
 char *readFile(FSState* fsState, DirectoryEntry *dir);
-void listDirectory( FSState* fsState, DirectoryEntry* dir);
+
+ssize_t getNextCluster( FSState* fsState, uint32_t cluster_number);
+DirectoryIterator* createDirectoryIterator(FSState* fsState, DirectoryEntry* dir);
+void destroyDirectoryIterator(DirectoryIterator* dirIter);
+DirectoryEntry* getNextDir(DirectoryIterator* dirIter);
+
 
 #endif //MY_LOG_LIBRARY_FS_DRIVER_H

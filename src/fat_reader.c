@@ -84,7 +84,22 @@ int performCommand(FSState *fsState, char *next_command) {
         next_command[ strlen(next_command) == 0? 0 : strlen(next_command) -1  ] = 0;
         DirectoryEntry *dir = getPtrToDirectory(fsState, next_command , NULL);
         if (dir != NULL) {
-            listDirectory(fsState,dir);
+            DirectoryIterator *dirIter = createDirectoryIterator(fsState, dir);
+            DirectoryEntry *nextDir = NULL;
+            while ((nextDir = getNextDir(dirIter)) != NULL){
+                char* fname = getFileName(nextDir);
+                int day_of_month = (nextDir->date & 0x1f);
+                int month = ((nextDir->date >> 5) & 0x0f);
+                int year = (nextDir->date >> 9) & 0x7f;
+                int seconds = (nextDir->time & 0x1f) * 2;
+                int minutes = (nextDir->time >> 5) & 0x3f;
+                int hours = (nextDir->time >> 11) & 0x1f;
+                char date[20];
+                sprintf(date, "%d.%02d.%02d %02d:%02d:%02d",year+1980, month, day_of_month, hours,minutes,seconds );
+                printf("%-15s%-10u%-23s%-5o\n" ,fname ,nextDir->file_size, date, nextDir->glags);
+                free(fname);
+            }
+            destroyDirectoryIterator(dirIter);
         } else {
             LOGMESG(LOG_ERROR, "Can not find this directory");
         }
